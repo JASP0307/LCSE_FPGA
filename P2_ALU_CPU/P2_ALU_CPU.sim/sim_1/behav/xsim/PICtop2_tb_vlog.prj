@@ -1,0 +1,9 @@
+# compile verilog/system verilog design source files
+verilog xil_defaultlib  --include "G:/2026.1/Vivado/data/rsb/busdef" --include "../../../../../P1_RS232/P1_RS232.gen/sources_1/ip/clk_wiz_0" \
+"../../../../../P1_RS232/P1_RS232.gen/sources_1/ip/fifo/sim/fifo.v" \
+
+# compile glbl module
+verilog xil_defaultlib "glbl.v"
+
+# Do not sort compile order
+nosort
