@@ -1,5 +1,0 @@
-fifo_generator_vlog_beh.v,verilog,fifo_generator_v13_2_15,../../../ipstatic/simulation/fifo_generator_vlog_beh.v,incdir="G:/2026.1/Vivado/data/rsb/busdef"
-fifo_generator_v13_2_vh_sim_rfs.vhd,vhdl,fifo_generator_v13_2_15,../../../ipstatic/hdl/fifo_generator_v13_2_vh_sim_rfs.vhd,incdir="G:/2026.1/Vivado/data/rsb/busdef"
-fifo_generator_v13_2_vl_sim_rfs.v,verilog,fifo_generator_v13_2_15,../../../ipstatic/hdl/fifo_generator_v13_2_vl_sim_rfs.v,incdir="G:/2026.1/Vivado/data/rsb/busdef"
-fifo.v,verilog,xil_defaultlib,../../../../../P1_RS232/P1_RS232.gen/sources_1/ip/fifo/sim/fifo.v,incdir="G:/2026.1/Vivado/data/rsb/busdef"
-glbl.v,Verilog,xil_defaultlib,glbl.v

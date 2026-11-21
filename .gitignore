@@ -1,0 +1,22 @@
+# Vivado: carpetas generadas (se regeneran al abrir el .xpr y lanzar runs)
+*.cache/
+*.runs/
+*.sim/
+*.hw/
+*.ip_user_files/
+*.gen/
+.Xil/
+
+# Vivado: logs, journals y temporales
+*.jou
+*.log
+*.str
+*.backup.*
+*.pb
+webtalk*
+xsim.dir/
+vivado_pid*.zip
+
+# Basura del sistema
+bash.exe.stackdump
+*.stackdump
