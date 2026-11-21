@@ -50,50 +50,52 @@ architecture Behavioral of ALU is
     signal ACC, IDX  : unsigned(7 downto 0);
     signal res_ACC  : unsigned(7 downto 0);
     signal res_IndReg : unsigned(7 downto 0);
+    signal res_FlagZ, res_FlagC, res_FlagN, res_FlagE : std_logic;
+    signal Z, C, N, E : std_logic;
 begin
 
-Register_A : process(Clk, Reset)
+Registers : process(Clk, Reset)
 begin
     if Reset = '0' then
         A <= (others =>'0');
+        B <= (others =>'0');
+        ACC <= (others =>'0');
+        IDX <= (others =>'0');
+        Z <= '0';
+        C <= '0';
+        N <= '0';
+        E <= '0';
     elsif rising_edge(Clk) then
         A <= res_A;
-    end if;
-end process;
-
-Register_B : process(Clk, Reset)
-begin
-    if Reset = '0' then
-        B <= (others =>'0');
-    elsif rising_edge(Clk) then
         B <= res_B;
-    end if;
-end process;
-
-Register_ACC : process(Clk, Reset)
-begin
-    if Reset = '0' then
-        ACC <= (others =>'0');
-    elsif rising_edge(Clk) then
         ACC <= res_ACC;
+        IDX <= res_IndReg;
+        Z <= res_FlagZ;
+        C <= res_FlagC;
+        N <= res_FlagN;
+        E <= res_FlagE;
+
     end if;
 end process;
 
-Register_IDX : process(Clk, Reset)
+Operaciones: process(A, B, ACC, IDX, Z, C, N, E, Alu_op, Databus)
+    variable Aux : unsigned(8 downto 0);
+    variable Aux2 : unsigned(4 downto 0);
 begin
-    if Reset = '0' then
-        Index_Reg <= (others =>'0');
-    elsif rising_edge(Clk) then
-        Index_Reg <= std_logic_vector(res_IndReg);
-    end if;
-end process;
-
-Operaciones: process(A, B, Alu_op)
-begin
+    
+    res_A <= A;
+    res_B <= B;
+    res_ACC <= ACC;
+    res_IndReg <= IDX;
+    res_FlagZ <= Z;
+    res_FlagC <= C;
+    res_FlagN <= N;
+    res_FlagE <= E;
+    databus <= (others => 'Z');
     case Alu_op is
     -- no operation
         when nop =>
-            Databus <= (others => 'Z');   
+            null; 
     -- external value load    
         when op_lda => 
             res_A <= unsigned(Databus);
@@ -107,107 +109,126 @@ begin
     -- internal load
         when op_mvacc2id =>
             res_IndReg <= ACC;
-            Databus <= (others => 'Z');
+
         when op_mvacc2a =>
             res_A <= ACC;
-            Databus <= (others => 'Z');
+
         when op_mvacc2b =>
             res_B <= ACC;
-            Databus <= (others => 'Z');
             
     -- arithmetic operations
         when op_add =>
-            res_ACC <= A + B;
-            if (res_ACC = 0) then
-                FlagZ <= '1';
+            Aux := resize(A, 9) + resize(B, 9);
+            res_ACC <= Aux(7 downto 0);
+            res_FlagC <= Aux(8);
+            if (Aux(7 downto 0) = 0) then
+                res_FlagZ <= '1';
             else
-                FlagZ <= '0';
+                res_FlagZ <= '0';
             end if;
-            Databus <= (others => 'Z');
-            
+            Aux2 := resize(A(3 downto 0), 5) + resize(B(3 downto 0), 5);
+                res_FlagN <= Aux2(4);
+
         when op_sub =>
-            res_ACC <= A - B;
-            Databus <= (others => 'Z');
+            Aux := resize(A, 9) - resize(B, 9);
+            res_ACC <= Aux(7 downto 0);
+            res_FlagC <= Aux(8);
+            if (Aux(7 downto 0) = 0) then
+                res_FlagZ <= '1';
+            else
+                res_FlagZ <= '0';
+            end if;
+            if (A(3 downto 0) < B(3 downto 0)) then
+                res_FlagN <= '1';
+            else
+                res_FlagN <= '0';
+            end if;
+
         when op_shiftl => 
-            res_ACC <= shift_left(unsigned(ACC),1);
-            Databus <= (others => 'Z');
+            res_ACC <= shift_left(ACC,1);
+            
         when op_shiftr =>
-            res_ACC <= shift_right(unsigned(ACC),1);
-            Databus <= (others => 'Z');
+            res_ACC <= shift_right(ACC,1);
             
     -- logic operations
         when op_and =>
             res_ACC <= A and B;
-            if (res_ACC = (others=>'0')) then
-                FlagZ <= '1';
+            if ((A and B) = 0) then
+                res_FlagZ <= '1';
             else
-                FlagZ <= '0';
+                res_FlagZ <= '0';
             end if;
-            Databus <= (others => 'Z');
+            
         when op_or =>
             res_ACC <= A or B;
-            if (res_ACC = (others=>'0')) then
-                FlagZ <= '1';
+            if ((A or B) = 0) then
+                res_FlagZ <= '1';
             else
-                FlagZ <= '0';
+                res_FlagZ <= '0';
             end if;
+            
         when op_xor =>
             res_ACC <= A xor B;
-            if (res_ACC = (others=>'0')) then
-                FlagZ <= '1';
+            if ((A xor B) = 0) then
+                res_FlagZ <= '1';
             else
-                FlagZ <= '0';
+                res_FlagZ <= '0';
             end if;
-            Databus <= (others => 'Z');
+            
     -- compare operations
         when op_cmpe =>
             if(A = B)then
-                FlagZ <= '1';
+                res_FlagZ <= '1';
             else 
-                FlagZ <= '0';
+                res_FlagZ <= '0';
             end if;
-            Databus <= (others => 'Z');
+            
         when op_cmpl =>
             if(A < B)then
-                FlagZ <= '1';
+                res_FlagZ <= '1';
             else 
-                FlagZ <= '0';
+                res_FlagZ <= '0';
             end if;
-            Databus <= (others => 'Z');
+            
         when op_cmpg =>
             if(A > B)then
-                FlagZ <= '1';
+                res_FlagZ <= '1';
             else 
-                FlagZ <= '0';
+                res_FlagZ <= '0';
             end if;
-            Databus <= (others => 'Z');
+            
         when op_ascii2bin =>
-            if (unsigned(A(3 downto 0))> "1001") then
+            if (A < X"30" or A > X"39") then
                 res_ACC <= X"FF";
-                FlagE <= '1';
+                res_FlagE <= '1';
             else
-                res_ACC <= unsigned(A(3 downto 0));
-                FlagE <= '0';
+                res_ACC <= "0000" & A(3 downto 0);
+                res_FlagE <= '0';
             end if;
-            Databus <= (others => 'Z');
+            
         when op_bin2ascii =>
-            if (A < X"10") then
-                if (A > "1001") then
-                    res_ACC <= X"FF";
-                    FlagE <= '1';
-                else
-                    res_ACC <= "0011" & unsigned(A);
-                    FlagE <= '0';
-                end if;
+            if (A > 9) then
+                res_ACC <= X"FF";
+                res_FlagE <= '1';
+            else
+                res_ACC <= "0011" & A(3 downto 0);
+                res_FlagE <= '0';
             end if;
-            Databus <= (others => 'Z');
+            
     -- output enable
         when op_oeacc =>
             Databus <= std_logic_vector(ACC);
         when others =>
-            Databus <= (others => 'Z');
+            null;
     end case;
 
 end process;
+
+
+Index_Reg <= std_logic_vector(IDX);
+FlagZ <= Z;
+FlagC <= C;
+FlagN <= N;
+FlagE <= E;
 
 end Behavioral;
