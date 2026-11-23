@@ -4,7 +4,7 @@ Material en bruto para rellenar `LCSE- Plantilla Memoria Final.docx`. Va ordenad
 los apartados de la plantilla. La plantilla pide explicar **cómo** se resolvió cada reto,
 no repetir el enunciado. Límite: 10 páginas más las mejoras, en Arial 12.
 
-Última actualización: 23/11/2026 (interbloqueo CPU↔DMA corregido; `tb_Terna` superado).
+Última actualización: 23/11/2026 (interbloqueo CPU↔DMA corregido; `tb_Terna` y `tb_PICtop` superados; fallo de índice en `gp_ram` corregido).
 
 ---
 
@@ -14,9 +14,9 @@ no repetir el enunciado. Límite: 10 páginas más las mejoras, en Arial 12.
 |---|---|---|
 | RS‑232 + DMA + RAM | **SÍ** | `tb_DMA_RX` con 0 errores (24/10), prueba en placa con `Nexys_PICtop2` (24/10) y `tb_Terna` con el interbloqueo corregido, 8 casos y 0 errores (23/11) |
 | ALU | **SÍ** | `tb_ALU`: 0 errores de comprobación y 0 de bus (21/11) |
-| Sistema completo sin interrupción | pendiente | falta `tb_PICtop` |
+| Sistema completo sin interrupción | **SÍ** (simulación) | `tb_PICtop`: 29 comandos, 0 errores, también desde el proyecto de Vivado (23/11). Falta en placa |
 | Sistema completo con interrupción | NO (no planteado) | |
-| Simulación Behavioral funcionando | parcial | terna (`tb_Terna`) y ALU sí; sistema completo pendiente |
+| Simulación Behavioral funcionando | **SÍ** | `tb_ALU`, `tb_Terna` y `tb_PICtop` sin errores (23/11) |
 | Simulación con retardos funcionando | pendiente | post-PAR prevista para otra sesión |
 | Síntesis sin errores | pendiente | la última síntesis (17/11) fallaba en la ALU, ya corregida |
 | Sistema funcionando en placa | pendiente | top `Nexys_PICtop` por USB‑UART |
@@ -66,6 +66,41 @@ Mejoras: rellenar con las del RS‑232 (P1) y las que se hagan después (ver `Me
     en vez de con flip‑flops sueltos.
 - La lectura es asíncrona (combinacional), y la CPU cuenta con ello: en el mismo ciclo de
   Execute pone `RAM_OE='0'` y la ALU captura el dato en el flanco.
+- **Fallo de índice fuera de rango en `gp_ram` (lo destapó `tb_PICtop`, 23/11):**
+  - Síntoma: XSim aborta en `T19` con `Index 0 out of bound 255 downto 64`
+    (`GP_RAM.vhd`, lectura concurrente). `T19` es el primer comando que usa 0x40–0xFF
+    (`WR TMP` / `LD .B, [TMP]` sobre 0x41). `tb_Terna` y el TB del profesor nunca acceden a
+    esa zona, por eso no salía antes.
+  - Causa: **ciclos delta**. Cada nivel de lógica combinacional añade un delta. Traza
+    medida al final del `LD .B, [TMP]` (flanco de 9 827 050 ns):
+
+    | delta | `cpu_ram_addr` | `address_mem` | `sel` | `oe_gp` |
+    |---|---|---|---|---|
+    | it3 | 00 | 41 | 1 | 0 |
+    | it4 | 00 | **00** | 1 (viejo) | 0 (viejo) → se lee `contents_ram(0)` → error |
+
+    Al **empezar** una lectura no pasa nada: la dirección llega antes que la habilitación
+    (`address_mem` en it4, `sel` en it5, `oe_gp` en it6). Al **terminar**, la dirección cambia
+    mientras la habilitación aún está activa. En hardware sería un glitch inofensivo; en
+    simulación es fatal porque el índice sale del rango del tipo.
+  - La escritura no tiene el problema: el `rising_edge(Clk)` se evalúa en it1, antes de
+    que cambie ninguna dirección (it3 en adelante), con todos los valores estables.
+  - La forma de onda no muestra deltas (un valor por instante); la traza se sacó con un
+    proceso sonda que hace `report` en cada cambio (la iteración sale en el mensaje).
+  - Alternativas evaluadas, sintetizando `gp_ram` aislada (xc7a100t, fuera de contexto):
+
+    | Versión | LUTRAM | LUT lógica | Total | ¿Índice siempre en rango? |
+    |---|---|---|---|---|
+    | Original: array 64..255, `to_integer` directo | 24 (RAM128X1S + RAM64X1S) | 10 | 34 | no |
+    | **Elegida: array 0..255** | 32 (RAM256X1S) | 9 | 41 | sí, también con `'X'` (→ 0) |
+    | Array 64..255 + función que pliega a 64 | 24 | 17 | 41 | sí |
+    | Array 64..255 + función que suma 64 (solo pone a 1 el bit 6) | 24 | 11 | 35 | sí |
+
+    Vivado no recorta las 64 posiciones que nunca se escriben. Se eligió 0..255 por
+    sencillez: cuesta 8 LUTRAM más (un 0,01 % de la FPGA) a cambio de que el rango quede
+    garantizado por el propio tipo. Para el oral: es un intercambio de área por robustez.
+    Guardar la lectura con `address` en vez de con `sel` también evitaba el error, pero no
+    cubre los metavalores (`"XX" /= "00"` es verdadero y `to_integer` devuelve 0).
 
 ### DMA (Etapa 2): retos resueltos
 - **La FIFO de la P1 es First‑Word‑Fall‑Through.** Al leer en un estado y escribir en el
@@ -215,13 +250,29 @@ Errores encontrados y corregidos en la ALU (útil para "retos superados"):
   - **Validación del propio TB:** contra una copia de la ALU con el fallo del bit 4 en N
     detecta 4 errores. Es un buen argumento para la memoria: el TB no aprueba cualquier
     cosa.
-- **`tb_PICtop`** (pendiente): sistema completo por la línea serie. Secuencia prevista:
-  - tras el reset, displays en `24`;
-  - `I41`→OK y switch 4 encendido; `I81`→ER; `I42`→ER; `SI4`→`S1`;
-  - `A35`→OK; `SA3`→`A5`; `A3X`→ER;
-  - `T19`→OK y displays en `19`; `ST?`→`19`; `T31`→ER;
-  - `X12`→ER;
-  - más un monitor de contención en el `Databus`.
+- **`tb_PICtop`** (`P2_ALU_CPU.srcs/sim_1/new/tb_PICtop.vhd`, VHDL‑2008), superado el 23/11:
+  - Sistema completo real (RS232top, DMA, RAM, CPU, ROM, ALU) ejecutando el programa de la
+    ROM. El TB hace de PC: 8E1, 115 200 bps, y espera la respuesta de 2 bytes antes de
+    enviar el siguiente comando (el protocolo del programa).
+  - **Caja negra:** solo mira `RS232_TX`, `switches`, `Temp_H` y `Temp_L`. Las lecturas
+    se comprueban con los comandos de consulta (`SI`, `SA`, `ST`).
+  - **Monitores internos con nombres externos VHDL‑2008:** 'X'/'U' en `Databus` o en el
+    bus de la RAM a mitad de ciclo (contención), y un watchdog que da error si `Send_comm`
+    pasa de 400 µs activo (interbloqueo CPU↔DMA).
+  - 29 comandos en 7 casos: reset (displays `24`, `ST?`→`24`); `I41`/`I71`/`I40` con los
+    LEDs; `I81`, `I42`, `I4X`, `IX1`→ER sin cambios; `SI7`→`S1`, `SI4`→`S0`, `SI8`→ER;
+    `A35`, `SA3`→`A5`, `A90`, `SA9`→`A0`, `A3X`/`AX5`/`SAX`→ER y el actuador sigue a 5;
+    `T19` (displays `19`), `ST?`→`19`, `T29`, `T31`/`T2X`→ER sin cambios, `ST0`→`29`, `T00`;
+    `X12`, `SX1`, `i41`→ER; los A/T no tocan los switches; recuento total de bytes.
+  - Resultado: 0 errores de estímulo, de tramas, de bus y de watchdog.
+  - Primera ejecución: destapó el fallo de índice de `gp_ram` (ver RAM).
+- **Por qué el TB del profesor (`PICtop_tb`) no sirve como prueba:** usa `Transmit` 8N1
+  (el receptor 8E1 rechaza las tramas por paridad), solo envía `I41` y corre 1000 ns por
+  defecto. No llega a la RAM de propósito general ni comprueba nada.
+- **Limitación conocida del diseño (no es un fallo):** hay un solo buffer de recepción y no
+  hay control de flujo. Si el PC envía un comando sin esperar la respuesta del anterior,
+  los bytes nuevos pueden sobrescribir 0x00–0x02 mientras la CPU aún los está leyendo. Por
+  eso el TB respeta el protocolo de esperar la respuesta (posible mejora: doble buffer).
 
 ### Placa
 - Ya hecho (2a, 24/10): `Nexys_PICtop2` con lazo JA1–JA2, lectura/escritura de RAM con
@@ -250,15 +301,37 @@ Comprobar y comentar:
 ---
 
 ## Estado del proyecto Vivado (para no olvidarlo)
-- `P2_ALU_CPU.xpr` mezcla ficheros por referencia de `../../P2a_TERNA` y `../../P1_RS232`.
-- Hay que limpiarlo (etapa 6):
-  - quitar los `tb_PICtop` antiguos, el `RS232_test` duplicado, los ficheros de PICtop2 y
-    su XDC, y el wcfg de `tb_DMA_RX`;
-  - poner como top de síntesis `Nexys_PICtop` (ahora está `PICtop_tb`).
+Limpieza del 23/11 (el `.xpr` solo contiene ya lo de la 2b):
+- **sources_1** (top de síntesis `nexys_PICtop`): `PIC_pkg`, `ROM` y `PICtop` del repo
+  (`LCSE_FPGA/PIC/`); ALU, CPU, DMA, RAM, `ep_ram` y `gp_ram` en `P2_ALU_CPU.srcs`; el
+  RS232 de la P1 por referencia (`../../P1_RS232`, fuera del repo); `Nexys_PICtop.vhd`
+  del profesor. IPs `fifo` y `clk_wiz_0`, también de la P1.
+- **constrs_1:** `Nexys_PICtop.xdc` del profesor.
+- **sim_1** (top `tb_PICtop`, VHDL‑2008, `run -all`): `tb_PICtop`, `tb_Terna` y
+  `tb_nexys_PICtop` del profesor.
+- Quitados del proyecto, aunque siguen en disco: los dos `RS232_test`, el TB del profesor
+  (`PICtop_tb`), `tb_DMA_RX` (sustituido por `tb_Terna`), `tb_Nexys_PICtop2`, PICtop2,
+  `Nexys_PICtop2` y el wcfg.
+- Comprobado tras la limpieza: elaboración RTL de `nexys_PICtop` sin errores, y
+  `tb_PICtop` superado con los scripts del proyecto.
+- Ficheros del profesor para la placa (`Nexys_PICtop/`, `tb_Nexys_PICtop/`), a revisar
+  en la próxima etapa:
+  - `Nexys_PICtop.vhd` conecta el PIC al **lazo JA1–JA2** (TX→RX), no al USB‑UART. Con
+    el lazo, el PIC recibe sus propias respuestas como comandos. Para hablar con el PC
+    hay que usar `UART_TXD_IN` (C4) y `UART_RXD_OUT` (D4), y añadirlos al XDC.
+  - `clk_wiz` con `locked => open`: el reset del PIC no espera a que enganche el reloj.
+  - `tb_nexys_PICtop.vhd` **no compila tal cual**: usa `reset2` y `switches` sin
+    declararlos, y `Transmit` sin `use work.RS232_test.all`. Además, ese `Transmit` es
+    8N1. Para la simulación con retardos se adaptará `tb_PICtop` (con un genérico que
+    desactive los nombres externos, que no existen en un netlist).
 
 ## Próxima sesión
 1. ~~El usuario corrige el interbloqueo en `DMA.vhd`~~ y ~~Claude escribe `tb_Terna`~~
    (hecho el 23/11).
-2. Claude escribe `tb_PICtop`: sistema completo con CPU, ROM y ALU reales.
-3. Top de placa y XDC (los escribe el usuario), limpieza del proyecto (añadir `tb_Terna` y
-   quitar `tb_DMA_RX`), síntesis, implementación y bitstream.
+2. ~~Claude escribe `tb_PICtop`~~ (hecho el 23/11; destapó el fallo de `gp_ram`, ya
+   corregido).
+3. Top de placa `Nexys_PICtop` y su XDC (los escribe el usuario).
+4. Limpieza del proyecto (quitar `tb_DMA_RX`, los `tb_PICtop` antiguos, el `RS232_test`
+   duplicado y lo de PICtop2), síntesis, implementación y bitstream.
+5. Simulación post‑síntesis/post‑PAR con `tb_PICtop` y prueba en placa con un terminal a
+   115200 8E1.

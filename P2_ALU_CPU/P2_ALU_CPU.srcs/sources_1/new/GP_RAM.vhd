@@ -14,7 +14,7 @@ end gp_ram;
 
 architecture behavior of gp_ram is
 
-  signal contents_ram : array8_ram(255 downto 64);   -- 0x40 .. 0xFF (192 posiciones)
+  signal contents_ram : array8_ram(255 downto 0);   -- 8-bit RAM with 256 locations
   signal sel          : std_logic;
 
 begin
