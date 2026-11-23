@@ -4,7 +4,7 @@ Material en bruto para rellenar `LCSE- Plantilla Memoria Final.docx`. Va ordenad
 los apartados de la plantilla. La plantilla pide explicar **cómo** se resolvió cada reto,
 no repetir el enunciado. Límite: 10 páginas más las mejoras, en Arial 12.
 
-Última actualización: 21/11/2026 (sesión de integración de la 2b: ALU terminada).
+Última actualización: 23/11/2026 (interbloqueo CPU↔DMA corregido; `tb_Terna` superado).
 
 ---
 
@@ -12,11 +12,11 @@ no repetir el enunciado. Límite: 10 páginas más las mejoras, en Arial 12.
 
 | Reto | Estado | Evidencia |
 |---|---|---|
-| RS‑232 + DMA + RAM | **SÍ** | `tb_DMA_RX` con 0 errores (24/10) y prueba en placa con `Nexys_PICtop2` (24/10) |
+| RS‑232 + DMA + RAM | **SÍ** | `tb_DMA_RX` con 0 errores (24/10), prueba en placa con `Nexys_PICtop2` (24/10) y `tb_Terna` con el interbloqueo corregido, 8 casos y 0 errores (23/11) |
 | ALU | **SÍ** | `tb_ALU`: 0 errores de comprobación y 0 de bus (21/11) |
 | Sistema completo sin interrupción | pendiente | falta `tb_PICtop` |
 | Sistema completo con interrupción | NO (no planteado) | |
-| Simulación Behavioral funcionando | parcial | terna y ALU sí; sistema completo pendiente |
+| Simulación Behavioral funcionando | parcial | terna (`tb_Terna`) y ALU sí; sistema completo pendiente |
 | Simulación con retardos funcionando | pendiente | post-PAR prevista para otra sesión |
 | Síntesis sin errores | pendiente | la última síntesis (17/11) fallaba en la ALU, ya corregida |
 | Sistema funcionando en placa | pendiente | top `Nexys_PICtop` por USB‑UART |
@@ -80,7 +80,7 @@ Mejoras: rellenar con las del RS‑232 (P1) y las que se hagan después (ver `Me
   cuanto sube `Send_comm`. `Valid_D` baja solo con `TX_RDY='1'`, así que sube en el mismo
   ciclo que cae `Ack_out` (Figura 3).
 - En Idle, `Send_comm` tiene prioridad sobre la recepción.
-- **Interbloqueo CPU↔DMA (encontrado al integrar, 21/11; pendiente de corregir):**
+- **Interbloqueo CPU↔DMA (encontrado al integrar el 21/11, corregido el 23/11):**
 
   | Ciclo | CPU | DMA |
   |---|---|---|
@@ -91,7 +91,15 @@ Mejoras: rellenar con las del RS‑232 (P1) y las que se hagan después (ver `Me
 
   Decisión: se arregla **en la DMA** sin tocar la CPU proporcionada. En `RxBusReq`, si
   llega `Send_comm`, pasa a TxSend. Todavía no ha leído la FIFO ni escrito en RAM, así que
-  no se pierde nada, y como `RX_Empty` sigue a '0` retoma la recepción al volver a Idle.
+  no se pierde nada, y como `RX_Empty` sigue a '0' retoma la recepción al volver a Idle.
+  - **Implementación:** en `RxBusReq`, un segundo `if Send_comm = '1' then NextState <=
+    TxSend` después del de `DMA_ACK`. La última asignación gana, así que `Send_comm` tiene
+    prioridad. Da igual en la práctica, porque la CPU no puede estar en Receive y en
+    Transmit a la vez: `DMA_ACK` y `Send_comm` son excluyentes. `READY` no hubo que
+    tocarlo, porque el camino nuevo pasa por TxDone. `cnt` tampoco cambia, porque solo
+    avanza en RxWrite.
+  - **Evidencia:** caso 8 de `tb_Terna`. Antes del arreglo, 8b y 8c fallaban por timeout
+    de READY (5 errores) y 8a pasaba gracias a la prioridad de Idle. Después pasan los tres.
 
 ### ALU (Etapa 3): cómo se ha resuelto
 Estructura de la Figura 6: **registros separados del núcleo combinacional**.
@@ -175,11 +183,23 @@ Errores encontrados y corregidos en la ALU (útil para "retos superados"):
   8680.6 ns por bit, pero el RS232 de la P1 usa **8E1** y descarta los bytes con paridad
   incorrecta. Los TB usan su propio `SendByte` 8E1 con un bit de 173 ciclos (8.65 µs),
   igual que P1.
-- **`tb_DMA_RX`** (será `tb_Terna`): RS232top real + DMA + RAM, con la CPU modelada en el
-  TB. Monitor de escrituras en RAM, decodificador 8E1 de `RS232_TX` y comprobación de los
-  protocolos (`Data_read` de un ciclo, nada sin `DMA_ACK`, bus en Z sin dueño,
-  `Valid_D`/`Ack`). 7 casos. Superado el 24/10. Pendiente: un caso nuevo que reproduzca el
-  interbloqueo, que debe fallar antes del arreglo y pasar después.
+- **`tb_Terna`** (`P2_ALU_CPU.srcs/sim_1/new/tb_Terna.vhd`, sucesor de `tb_DMA_RX`):
+  RS232top real + DMA + RAM, con la CPU modelada en el TB. Monitor de escrituras en RAM,
+  decodificador 8E1 de `RS232_TX` y comprobación de los protocolos (`Data_read` de un
+  ciclo, nada sin `DMA_ACK`, bus en Z sin dueño, `Valid_D`/`Ack`).
+  - Casos 1–7 (los de `tb_DMA_RX`, superado el 24/10): reset, comandos con `DMA_ACK`
+    rápido y retrasado (3 bytes acumulados en la FIFO), SEND con el transmisor ocupado y
+    RX durante un SEND.
+  - **Modelo de CPU más fiel que en `tb_DMA_RX`:** solo concede `DMA_ACK` estando libre,
+    nunca con `Send_comm='1'` (Transmit) ni con `cpu_busy='1'` (ejecutando). El modelo
+    anterior concedía en cualquier momento y por eso no destapaba el interbloqueo. Es una
+    lección para la memoria: un TB que modela mal el entorno da falsos aprobados.
+  - **Caso 8 (interbloqueo):** llega un byte con la CPU ocupada y la CPU lanza SEND sin
+    mirar `DMA_RQ`, con `Send_comm` subiendo 0, 1 y 5 ciclos después de que caiga
+    `RX_Empty` (8a: la DMA aún en Idle; 8b: la carrera real; 8c: varios ciclos en
+    RxBusReq). Los tres bytes forman "SI4", así que se comprueba también que el byte
+    pendiente se recibe después del SEND.
+  - Falló antes del arreglo (8b y 8c) y pasó después: 8 casos, 0 errores (23/11).
 - **`tb_ALU`** (`P2_ALU_CPU.srcs/sim_1/new/tb_ALU.vhd`), superado el 21/11:
   - **Temporización:** los estímulos cambian en el flanco de bajada y la ALU captura en el
     de subida, así que no hay carreras.
@@ -237,7 +257,8 @@ Comprobar y comentar:
   - poner como top de síntesis `Nexys_PICtop` (ahora está `PICtop_tb`).
 
 ## Próxima sesión
-1. El usuario corrige el interbloqueo en `DMA.vhd` (estado `RxBusReq`).
-2. Claude escribe `tb_Terna` con el caso del interbloqueo y `tb_PICtop`.
-3. Top de placa y XDC (los escribe el usuario), limpieza del proyecto, síntesis,
-   implementación y bitstream.
+1. ~~El usuario corrige el interbloqueo en `DMA.vhd`~~ y ~~Claude escribe `tb_Terna`~~
+   (hecho el 23/11).
+2. Claude escribe `tb_PICtop`: sistema completo con CPU, ROM y ALU reales.
+3. Top de placa y XDC (los escribe el usuario), limpieza del proyecto (añadir `tb_Terna` y
+   quitar `tb_DMA_RX`), síntesis, implementación y bitstream.

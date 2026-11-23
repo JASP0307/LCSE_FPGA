@@ -116,6 +116,10 @@ begin
                 NextState <= RxWrite;
             end if;
 
+            if Send_comm = '1' then
+                NextState <= TxSend;
+            end if;
+
         when RxWrite =>
             if cnt /= 2 then
                 NextState <= RcvDone;
