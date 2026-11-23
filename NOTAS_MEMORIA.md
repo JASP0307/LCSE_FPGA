@@ -4,7 +4,7 @@ Material en bruto para rellenar `LCSE- Plantilla Memoria Final.docx`. Va ordenad
 los apartados de la plantilla. La plantilla pide explicar **cómo** se resolvió cada reto,
 no repetir el enunciado. Límite: 10 páginas más las mejoras, en Arial 12.
 
-Última actualización: 23/11/2026 (interbloqueo CPU↔DMA corregido; `tb_Terna` y `tb_PICtop` superados; fallo de índice en `gp_ram` corregido).
+Última actualización: 24/11/2026 (top de placa propio con USB‑UART y reset con `locked`; `tb_Nexys_PICtop_timing` superado en behavioral).
 
 ---
 
@@ -277,9 +277,34 @@ Errores encontrados y corregidos en la ALU (útil para "retos superados"):
 ### Placa
 - Ya hecho (2a, 24/10): `Nexys_PICtop2` con lazo JA1–JA2, lectura/escritura de RAM con
   los botones, switches 0x10–0x17 en los LEDs y T_STAT en los displays.
-- Pendiente (2b): top `Nexys_PICtop` con `clk_wiz` a 20 MHz, reset con
-  `CPU_RESETN and locked`, USB‑UART (C4 = TXD_IN, D4 = RXD_OUT), LEDs = switches y displays
-  = T_STAT. Prueba con un terminal a **115200 8E1** (paridad Even) enviando los comandos
+- **Top de placa 2b** (`sources_1/new/Nexys_PICtop.vhd` + `constrs_1/new/Nexys_PICtop.xdc`,
+  escritos el 24/11 a partir de los del profesor):
+  - USB‑UART en vez del lazo JA: `RS232_RX <= UART_TXD_IN` (C4), `UART_RXD_OUT <= RS232_TX`
+    (D4). Los nombres son los del chip USB: `TXD_IN` es lo que el PC transmite y entra a
+    la FPGA. Fallo cometido por el camino: asignarlas al revés deja `RS232_TX` con dos
+    drivers (el PIC y el puerto) y `RS232_RX` sin ninguno.
+  - `JA`, `UART_CTS` y `UART_RTS` fuera de la entidad y comentados en el XDC. Entidad y XDC
+    deben ir a la par: un puerto sin pin hace fallar el bitstream (DRC), y una restricción
+    de un puerto que no existe da *critical warning*.
+  - **Reset:** `reset_p <= not SW(15)` va al `clk_wiz`; `reset <= locked` va al PIC y al
+    contador. `locked` ya incluye el switch, porque un MMCM en reset pone `locked='0'`.
+    **Bucle evitado:** la primera versión hacía `reset <= locked and SW(15)` y
+    `reset_p <= not reset`. Con `locked='0'` al arrancar, el `clk_wiz` se queda en reset
+    para siempre y el PIC no arranca nunca. Regla: el reset de un generador de reloj solo
+    depende de entradas externas, nunca de su propio `locked`.
+  - `LED(15) <= reset`: encendido = PIC funcionando; switch arriba y LED apagado = reloj
+    sin enganchar.
+  - Para el oral: `locked` no está sincronizado con los 20 MHz, así que la liberación del
+    reset es asíncrona (posible mejora: sincronizador de reset de 2 FF, junto con un 2.º FF
+    en la línea RX, que con el USB‑UART ya es asíncrona).
+- **`tb_Nexys_PICtop_timing`** (`sim_1/new`, VHDL‑2008), superado en behavioral el 24/11:
+  top completo con el modelo de la IP `clk_wiz`, solo por pines (sirve tal cual para
+  post‑síntesis/post‑PAR). Casos: PIC en reset con `SW(15)=0`; arranque (sale de reset
+  1,05 µs después de subir el switch, en el modelo); displays `4`/`2` multiplexados;
+  `I41`→`OK` + LED4, `SI4`→`S1`; reset en marcha que borra los switches y reengancha,
+  `SI4`→`S0`. 0 errores y 6/6 bytes. Validación: con el bucle de reset de la primera
+  versión da 8 errores.
+- Pendiente: prueba con un terminal a **115200 8E1** (paridad Even) enviando los comandos
   de la tabla.
 
 ---
@@ -305,10 +330,12 @@ Limpieza del 23/11 (el `.xpr` solo contiene ya lo de la 2b):
 - **sources_1** (top de síntesis `nexys_PICtop`): `PIC_pkg`, `ROM` y `PICtop` del repo
   (`LCSE_FPGA/PIC/`); ALU, CPU, DMA, RAM, `ep_ram` y `gp_ram` en `P2_ALU_CPU.srcs`; el
   RS232 de la P1 por referencia (`../../P1_RS232`, fuera del repo); `Nexys_PICtop.vhd`
-  del profesor. IPs `fifo` y `clk_wiz_0`, también de la P1.
-- **constrs_1:** `Nexys_PICtop.xdc` del profesor.
+  propio en `sources_1/new` (desde el 24/11). IPs `fifo` y `clk_wiz_0`, también de la P1.
+- **constrs_1:** `Nexys_PICtop.xdc` propio en `constrs_1/new` (desde el 24/11).
 - **sim_1** (top `tb_PICtop`, VHDL‑2008, `run -all`): `tb_PICtop`, `tb_Terna` y
-  `tb_nexys_PICtop` del profesor.
+  `tb_Nexys_PICtop_timing`. El `tb_nexys_PICtop` del profesor salió del proyecto el 24/11.
+- Los originales del profesor (`Nexys_PICtop/`, `tb_Nexys_PICtop/`) se quedan intactos en
+  el repo como referencia.
 - Quitados del proyecto, aunque siguen en disco: los dos `RS232_test`, el TB del profesor
   (`PICtop_tb`), `tb_DMA_RX` (sustituido por `tb_Terna`), `tb_Nexys_PICtop2`, PICtop2,
   `Nexys_PICtop2` y el wcfg.
@@ -330,8 +357,9 @@ Limpieza del 23/11 (el `.xpr` solo contiene ya lo de la 2b):
    (hecho el 23/11).
 2. ~~Claude escribe `tb_PICtop`~~ (hecho el 23/11; destapó el fallo de `gp_ram`, ya
    corregido).
-3. Top de placa `Nexys_PICtop` y su XDC (los escribe el usuario).
+3. ~~Top de placa `Nexys_PICtop` y su XDC (los escribe el usuario)~~ (hecho el 24/11,
+   con `tb_Nexys_PICtop_timing` superado).
 4. Limpieza del proyecto (quitar `tb_DMA_RX`, los `tb_PICtop` antiguos, el `RS232_test`
    duplicado y lo de PICtop2), síntesis, implementación y bitstream.
-5. Simulación post‑síntesis/post‑PAR con `tb_PICtop` y prueba en placa con un terminal a
+5. Simulación post‑síntesis/post‑PAR con `tb_Nexys_PICtop_timing` y prueba en placa con un terminal a
    115200 8E1.
