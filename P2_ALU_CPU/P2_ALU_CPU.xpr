@@ -113,19 +113,19 @@
           <Attr Name="UsedIn" Val="simulation"/>
         </FileInfo>
       </File>
-      <File Path="$PPRDIR/../../P1_RS232/P1_RS232.srcs/sources_1/new/P1_RX_RS232.vhd">
+      <File Path="$PPRDIR/../P1_RS232/P1_RS232.srcs/sources_1/new/P1_RX_RS232.vhd">
         <FileInfo>
           <Attr Name="UsedIn" Val="synthesis"/>
           <Attr Name="UsedIn" Val="simulation"/>
         </FileInfo>
       </File>
-      <File Path="$PPRDIR/../../P1_RS232/P1_RS232.srcs/sources_1/new/P1_SHIFT_REGISTER.vhd">
+      <File Path="$PPRDIR/../P1_RS232/P1_RS232.srcs/sources_1/new/P1_SHIFT_REGISTER.vhd">
         <FileInfo>
           <Attr Name="UsedIn" Val="synthesis"/>
           <Attr Name="UsedIn" Val="simulation"/>
         </FileInfo>
       </File>
-      <File Path="$PPRDIR/../../P1_RS232/P1_RS232.srcs/sources_1/new/P1_TX_RS232.vhd">
+      <File Path="$PPRDIR/../P1_RS232/P1_RS232.srcs/sources_1/new/P1_TX_RS232.vhd">
         <FileInfo>
           <Attr Name="UsedIn" Val="synthesis"/>
           <Attr Name="UsedIn" Val="simulation"/>
@@ -149,7 +149,7 @@
           <Attr Name="UsedIn" Val="simulation"/>
         </FileInfo>
       </File>
-      <File Path="$PPRDIR/../../P1_RS232/Simulacion_RS232/RS232top.vhd">
+      <File Path="$PPRDIR/../P1_RS232/Simulacion_RS232/RS232top.vhd">
         <FileInfo>
           <Attr Name="UsedIn" Val="synthesis"/>
           <Attr Name="UsedIn" Val="simulation"/>
@@ -235,7 +235,7 @@
       </Config>
     </FileSet>
     <FileSet Name="fifo" Type="BlockSrcs" RelSrcDir="$PSRCDIR/fifo" RelGenDir="$PGENDIR/fifo">
-      <File Path="$PPRDIR/../../P1_RS232/P1_RS232.srcs/sources_1/ip/fifo/fifo.xci">
+      <File Path="$PPRDIR/../P1_RS232/P1_RS232.srcs/sources_1/ip/fifo/fifo.xci">
         <FileInfo>
           <Attr Name="UsedIn" Val="synthesis"/>
           <Attr Name="UsedIn" Val="implementation"/>
@@ -248,7 +248,7 @@
       </Config>
     </FileSet>
     <FileSet Name="clk_wiz_0" Type="BlockSrcs" RelSrcDir="$PSRCDIR/clk_wiz_0" RelGenDir="$PGENDIR/clk_wiz_0">
-      <File Path="$PPRDIR/../../P1_RS232/P1_RS232.srcs/sources_1/ip/clk_wiz_0/clk_wiz_0.xci">
+      <File Path="$PPRDIR/../P1_RS232/P1_RS232.srcs/sources_1/ip/clk_wiz_0/clk_wiz_0.xci">
         <FileInfo>
           <Attr Name="UsedIn" Val="synthesis"/>
           <Attr Name="UsedIn" Val="implementation"/>
